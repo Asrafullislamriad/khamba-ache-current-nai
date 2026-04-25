@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PowerPulse | Load Shedding Monitor</title>
+    <meta name="description" content="Real-time load shedding and power outage monitoring dashboard.">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-effect"></div>
+    
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i class="fa-solid fa-bolt-lightning pulse-icon"></i>
+                <h1>PowerPulse</h1>
+            </div>
+            <p class="subtitle">Decentralized Load Shedding Monitor</p>
+            <div class="add-device-btn" id="addDeviceBtn">
+                <i class="fa-solid fa-plus"></i> Add Monitor
+            </div>
+            <a href="installation.html" class="add-device-btn" style="background:transparent;border:1px solid var(--accent);box-shadow:none;text-decoration:none;">
+                <i class="fa-solid fa-book"></i> ইনস্টলেশন গাইড
+            </a>
+        </header>
+
+        <section class="stats-overview">
+            <div class="stat-card glass-panel">
+                <div class="stat-icon online"><i class="fa-solid fa-satellite-dish"></i></div>
+                <div class="stat-details">
+                    <h3>Active Monitors</h3>
+                    <p id="totalMonitors" class="stat-number">0</p>
+                </div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="stat-icon outage"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div class="stat-details">
+                    <h3>Current Outages</h3>
+                    <p id="currentOutages" class="stat-number">0</p>
+                </div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="stat-icon time"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                <div class="stat-details">
+                    <h3>Avg. Daily Outage</h3>
+                    <p id="avgOutage" class="stat-number">0h 0m</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="monitors-list">
+            <div class="list-header">
+                <h2>Monitored Areas</h2>
+                <div class="filter-group">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="online">Power On</button>
+                    <button class="filter-btn" data-filter="offline">Load Shedding</button>
+                </div>
+            </div>
+            <div class="grid" id="monitorsGrid">
+                <!-- Monitor Cards will be injected here by JS -->
+            </div>
+        </section>
+    </div>
+
+    <!-- Add Device Modal -->
+    <div class="modal" id="addDeviceModal">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h2>Register New Monitor</h2>
+                <button class="close-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="addDeviceForm">
+                <div class="form-group">
+                    <label for="areaName">Area / Location Name <span class="required">*</span></label>
+                    <input type="text" id="areaName" placeholder="e.g., Mirpur 10, Dhaka" required>
+                </div>
+                <div class="form-group">
+                    <label for="deviceId">ESP8266 Device ID <span class="required">*</span></label>
+                    <input type="text" id="deviceId" placeholder="e.g., ESP_MIR_001" required>
+                </div>
+                <div class="form-instructions">
+                    <p><i class="fa-solid fa-circle-info"></i> After registration, flash your ESP8266 with the provided code and your chosen Device ID.</p>
+                </div>
+                <button type="submit" class="submit-btn">Register Device</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- History Drawer -->
+    <div class="drawer" id="historyDrawer">
+        <div class="drawer-overlay"></div>
+        <div class="drawer-content glass-panel">
+            <div class="drawer-header">
+                <div>
+                    <h2 id="drawerAreaName">Area Name</h2>
+                    <p id="drawerDeviceId" class="device-id"><i class="fa-solid fa-microchip"></i> <span>Device ID</span></p>
+                </div>
+                <button class="close-drawer-btn" id="closeDrawerBtn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="drawer-stats">
+                <div class="d-stat">
+                    <span>Total Outage (24h)</span>
+                    <strong id="drawerTotalOutage">0h 0m</strong>
+                </div>
+                <div class="d-stat">
+                    <span>Power Status</span>
+                    <strong id="drawerStatus" class="status-badge">Online</strong>
+                </div>
+                <div class="d-stat" style="grid-column: 1/-1;">
+                    <span><i class="fa-solid fa-network-wired" style="margin-right:0.3rem;"></i> Device IP (Verification)</span>
+                    <strong id="drawerDeviceIP" style="font-family:monospace;font-size:1rem;">N/A</strong>
+                </div>
+            </div>
+
+            <div class="drawer-body">
+                <h3><i class="fa-solid fa-clock-rotate-left"></i> Outage History</h3>
+                <div class="history-timeline" id="historyTimeline">
+                    <!-- Timeline items injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
