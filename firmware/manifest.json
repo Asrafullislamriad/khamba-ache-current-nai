@@ -1,0 +1,15 @@
+{
+  "name": "PowerPulse Load Shedding Monitor",
+  "version": "1.0.0",
+  "builds": [
+    {
+      "chipFamily": "ESP8266",
+      "parts": [
+        {
+          "path": "powerpulse.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

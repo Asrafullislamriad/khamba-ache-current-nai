@@ -169,78 +169,87 @@
             </div>
         </div>
 
-        <!-- Step 2: Build Firmware -->
+        <!-- Step 2: Flash Firmware -->
         <div class="step-section">
             <div class="step-title">
                 <span class="step-number">২</span>
-                <h2>ফার্মওয়্যার তৈরি ও ডাউনলোড করুন</h2>
+                <h2>ESP8266-এ ফার্মওয়্যার ফ্ল্যাশ করুন</h2>
             </div>
             <div class="step-content">
-                <p style="color: var(--text-secondary); margin-bottom: 1rem;">নিচের ফর্মে আপনার তথ্য দিন। আমরা আপনার জন্য কাস্টম ফার্মওয়্যার ফাইল তৈরি করে দিবো!</p>
-                
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">USB ক্যাবল দিয়ে ESP8266 কম্পিউটারে কানেক্ট করুন, তারপর নিচের বাটনে ক্লিক করুন — ব্রাউজার থেকেই সরাসরি ফ্ল্যাশ হয়ে যাবে!</p>
+
                 <div class="firmware-builder glass-panel">
-                    <h3><i class="fa-solid fa-wand-magic-sparkles"></i> ফার্মওয়্যার জেনারেটর</h3>
-                    
-                    <div class="fw-form-group">
-                        <label>আপনার WiFi এর নাম <span class="required">*</span></label>
-                        <input type="text" id="fwWifiName" placeholder="যেমন: TP-Link_Home" required>
-                        <div class="input-hint">আপনার বাসার WiFi রাউটারে যে নাম দেখায় সেটা হুবহু লিখুন</div>
-                    </div>
-                    
-                    <div class="fw-form-group">
-                        <label>WiFi পাসওয়ার্ড <span class="required">*</span></label>
-                        <div style="position:relative;">
-                            <input type="password" id="fwWifiPass" placeholder="আপনার WiFi পাসওয়ার্ড" required>
-                            <button id="togglePass" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:1rem;"><i class="fa-solid fa-eye"></i></button>
-                        </div>
-                    </div>
-                    
-                    <div class="fw-form-group">
-                        <label>ডিভাইস আইডি (Device ID) <span class="required">*</span></label>
-                        <input type="text" id="fwDeviceId" placeholder="যেমন: esp_mir_10" required>
-                        <div class="input-hint">ইংরেজিতে ছোট হাতের অক্ষরে লিখুন (স্পেস ও বাংলা ব্যবহার করবেন না)। ড্যাশবোর্ডে "Add Monitor" করার সময় এই একই আইডি দিতে হবে।</div>
+                    <h3><i class="fa-solid fa-bolt"></i> ব্রাউজার থেকে সরাসরি ফ্ল্যাশ করুন</h3>
+
+                    <ol class="numbered-list">
+                        <li><strong>USB ক্যাবল</strong> দিয়ে ESP8266 কম্পিউটারে লাগান।</li>
+                        <li>নিচের <strong>"Flash Firmware"</strong> বাটনে ক্লিক করুন।</li>
+                        <li>পপআপে আপনার ESP8266 এর <strong>COM Port</strong> সিলেক্ট করুন।</li>
+                        <li>ফ্ল্যাশ শেষ হলে ESP নিজে থেকে রিবুট হবে!</li>
+                    </ol>
+
+                    <!-- ESP Web Tools Flash Button -->
+                    <div style="text-align:center; margin: 1.5rem 0;">
+                        <esp-web-install-button
+                            manifest="firmware/manifest.json"
+                            id="flashBtn">
+                            <button slot="activate" class="download-btn" style="max-width:400px;margin:0 auto;">
+                                <i class="fa-solid fa-microchip"></i> Flash Firmware
+                            </button>
+                            <span slot="unsupported">
+                                <div class="warning-box">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                    আপনার ব্রাউজার Web Serial সাপোর্ট করে না। দয়া করে <strong>Google Chrome</strong> বা <strong>Microsoft Edge</strong> ব্যবহার করুন।
+                                </div>
+                            </span>
+                            <span slot="not-allowed">
+                                <div class="warning-box">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                    HTTPS প্রয়োজন। এই পেইজটি <strong>https://</strong> দিয়ে খুলুন।
+                                </div>
+                            </span>
+                        </esp-web-install-button>
                     </div>
 
-                    <!-- Live Preview -->
-                    <div class="fw-preview" id="fwPreview">
-                        <div>WiFi Name: <span class="val" id="prevWifi">—</span></div>
-                        <div>WiFi Pass: <span class="val" id="prevPass">••••</span></div>
-                        <div>Device ID: <span class="val" id="prevId">—</span></div>
+                    <div class="info-box">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <strong>Chrome বা Edge ব্রাউজার লাগবে।</strong> Firefox/Safari এ Web Serial কাজ করে না।
                     </div>
-                    
-                    <button class="download-btn" id="downloadFwBtn" disabled>
-                        <i class="fa-solid fa-download"></i> ফার্মওয়্যার ডাউনলোড করুন (.ino)
-                    </button>
+
+                    <div class="warning-box">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <strong>COM Port দেখা যাচ্ছে না?</strong> আপনার কম্পিউটারে <strong>CH340 Driver</strong> ইনস্টল করতে হতে পারে। গুগলে "CH340 driver download" লিখে সার্চ করুন।
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Step 3: Flash -->
+        <!-- Step 3: WiFi Setup -->
         <div class="step-section">
             <div class="step-title">
                 <span class="step-number">৩</span>
-                <h2>ESP8266-এ ফ্ল্যাশ করুন</h2>
+                <h2>WiFi সেটআপ করুন</h2>
             </div>
             <div class="step-content">
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">ফ্ল্যাশ হওয়ার পর ESP নিজে থেকে একটি WiFi Hotspot তৈরি করবে। সেখান থেকে আপনার WiFi সেটআপ করুন।</p>
+
                 <ol class="numbered-list">
-                    <li><strong>USB ক্যাবল</strong> দিয়ে ESP8266 কম্পিউটারে কানেক্ট করুন।</li>
-                    <li>নিচের লিংকে ক্লিক করে <strong>ESPWebTool</strong> ওয়েবসাইটে যান:</li>
+                    <li>ফ্ল্যাশ করার পর ESP রিবুট হবে এবং <strong>"PowerPulse-Setup"</strong> নামে একটি WiFi Hotspot তৈরি হবে।</li>
+                    <li>আপনার <strong>মোবাইল বা কম্পিউটার</strong> দিয়ে <strong>"PowerPulse-Setup"</strong> WiFi তে কানেক্ট করুন।</li>
+                    <li>একটি <strong>পেইজ অটোমেটিক খুলবে</strong> (Captive Portal)। না খুললে ব্রাউজারে <strong>192.168.4.1</strong> লিখুন।</li>
+                    <li>পেইজে আপনার <strong>Device ID</strong> দেখাবে — <strong>"Copy" বাটন চেপে কপি করে রাখুন!</strong></li>
+                    <li><strong>"Configure WiFi"</strong> চাপুন → আপনার বাসার <strong>WiFi নাম</strong> সিলেক্ট করুন → <strong>পাসওয়ার্ড</strong> দিন → <strong>"Save"</strong> চাপুন।</li>
+                    <li>ESP রিবুট হয়ে আপনার WiFi তে কানেক্ট হবে। <strong>হয়ে গেছে!</strong> 🎉</li>
                 </ol>
 
-                <a href="https://esptool.spacehuhn.com/" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:0.75rem;padding:1rem;background:rgba(139, 92, 246, 0.15);border:1px solid rgba(139, 92, 246, 0.3);border-radius:12px;color:#c4b5fd;text-decoration:none;font-weight:600;font-size:1.1rem;margin:1rem 0;transition:all 0.3s;">
-                    <i class="fa-solid fa-arrow-up-right-from-square"></i> ESPWebTool ওপেন করুন — esptool.spacehuhn.com
-                </a>
+                <div class="success-box">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <strong>Device ID কপি করেছেন তো?</strong> পরের ধাপে Dashboard এ এই ID দিয়ে register করতে হবে!
+                </div>
 
-                <ol class="numbered-list" start="3">
-                    <li><strong>"CONNECT"</strong> বাটনে ক্লিক করুন → পপআপে আপনার ESP8266 এর <strong>COM Port</strong> সিলেক্ট করুন (সাধারণত "USB Serial Port (COM4)" বা অনুরূপ) → "Connect" ক্লিক করুন।</li>
-                    <li>কানেক্ট হলে <strong>"SELECT"</strong> বাটনে ক্লিক করে আপনার ডাউনলোড করা <strong>esp8266_firmware.ino</strong> ফাইলটি সিলেক্ট করুন।</li>
-                    <li><strong>"PROGRAM"</strong> বাটনে ক্লিক করুন এবং ফ্ল্যাশ হওয়া পর্যন্ত অপেক্ষা করুন।</li>
-                    <li>"Done!" মেসেজ দেখলে সফলভাবে ফ্ল্যাশ হয়ে গিয়েছে! 🎉</li>
-                </ol>
-                
-                <div class="warning-box">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                    <strong>COM Port দেখা যাচ্ছে না?</strong> আপনার কম্পিউটারে <strong>CH340 Driver</strong> ইনস্টল করতে হতে পারে। গুগলে "CH340 driver download" লিখে সার্চ করুন এবং ইনস্টল করুন।
+                <div class="info-box">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <strong>WiFi পরিবর্তন করতে চান?</strong> ESP এর RST বাটন ৩ বার দ্রুত চাপুন — আবার "PowerPulse-Setup" hotspot তৈরি হবে।
                 </div>
             </div>
         </div>
@@ -249,14 +258,14 @@
         <div class="step-section">
             <div class="step-title">
                 <span class="step-number">৪</span>
-                <h2>বাসায় বসান ও ব্যবহার করুন</h2>
+                <h2>ড্যাশবোর্ডে রেজিস্টার করুন</h2>
             </div>
             <div class="step-content">
                 <ol class="numbered-list">
                     <li>ESP8266 কম্পিউটার থেকে খুলে নিন।</li>
                     <li>একটি <strong>মোবাইল চার্জার</strong> দিয়ে ESP8266-কে দেওয়ালের প্লাগে লাগান।</li>
                     <li><a href="index.html" style="color:var(--accent);">PowerPulse ড্যাশবোর্ড</a>-এ গিয়ে <strong>"+ Add Monitor"</strong> বাটনে ক্লিক করুন।</li>
-                    <li>আপনার <strong>এলাকার নাম</strong> এবং একটু আগে যে <strong>Device ID</strong> দিয়েছিলেন সেটি দিয়ে রেজিস্টার করুন।</li>
+                    <li>আপনার <strong>এলাকার নাম</strong> লিখুন এবং WiFi সেটআপের সময় যে <strong>Device ID</strong> কপি করেছিলেন সেটি <strong>paste</strong> করুন।</li>
                 </ol>
                 <div class="success-box">
                     <i class="fa-solid fa-circle-check"></i>
@@ -298,11 +307,15 @@
                 </div>
                 <div class="faq-item">
                     <div class="faq-q"><i class="fa-solid fa-chevron-right"></i> একাধিক এলাকা মনিটর করতে চাইলে?</div>
-                    <div class="faq-a">প্রতিটি এলাকায় আলাদা ESP8266 বসান, এবং প্রতিটিতে ভিন্ন Device ID দিন। সব এলাকা একটি ড্যাশবোর্ডেই দেখা যাবে!</div>
+                    <div class="faq-a">প্রতিটি এলাকায় আলাদা ESP8266 বসান। প্রতিটির নিজস্ব unique Device ID থাকবে। সব এলাকা একটি ড্যাশবোর্ডেই দেখা যাবে!</div>
                 </div>
                 <div class="faq-item">
                     <div class="faq-q"><i class="fa-solid fa-chevron-right"></i> WiFi পাসওয়ার্ড পরিবর্তন করলে?</div>
-                    <div class="faq-a">এই পেইজে এসে নতুন পাসওয়ার্ড দিয়ে আবার ফার্মওয়্যার ডাউনলোড করে ESP-তে ফ্ল্যাশ করুন।</div>
+                    <div class="faq-a">ESP8266 এর <strong>RST বাটন ৩ বার দ্রুত চাপুন</strong> — আবার "PowerPulse-Setup" hotspot তৈরি হবে। সেখানে নতুন WiFi সেটআপ করুন।</div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-q"><i class="fa-solid fa-chevron-right"></i> Device ID হারিয়ে গেলে?</div>
+                    <div class="faq-a">ESP রিসেট করলে (RST ৩ বার) WiFi portal এ আবার Device ID দেখাবে। কপি করে নিন!</div>
                 </div>
             </div>
         </div>
@@ -315,204 +328,7 @@
         </div>
     </div>
 
-    <script>
-    // ===== Firmware Generator Script =====
-    
-    const wifiInput = document.getElementById('fwWifiName');
-    const passInput = document.getElementById('fwWifiPass');
-    const idInput = document.getElementById('fwDeviceId');
-    const downloadBtn = document.getElementById('downloadFwBtn');
-    const togglePassBtn = document.getElementById('togglePass');
-    const prevWifi = document.getElementById('prevWifi');
-    const prevPass = document.getElementById('prevPass');
-    const prevId = document.getElementById('prevId');
-    
-    // Toggle password visibility
-    togglePassBtn.addEventListener('click', () => {
-        const isPassword = passInput.type === 'password';
-        passInput.type = isPassword ? 'text' : 'password';
-        togglePassBtn.innerHTML = isPassword ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
-    });
-    
-    // Live preview update
-    function updatePreview() {
-        const wifi = wifiInput.value.trim();
-        const pass = passInput.value.trim();
-        const id = idInput.value.trim();
-        
-        prevWifi.textContent = wifi || '—';
-        prevPass.textContent = pass ? '••••••••' : '••••';
-        prevId.textContent = id || '—';
-        
-        downloadBtn.disabled = !(wifi && pass && id);
-    }
-    
-    wifiInput.addEventListener('input', updatePreview);
-    passInput.addEventListener('input', updatePreview);
-    idInput.addEventListener('input', updatePreview);
-    
-    // Download firmware
-    downloadBtn.addEventListener('click', () => {
-        const wifi = wifiInput.value.trim();
-        const pass = passInput.value.trim();
-        const id = idInput.value.trim();
-        
-        if (!wifi || !pass || !id) return;
-        
-        const firmware = generateFirmware(wifi, pass, id);
-        
-        // Create download
-        const blob = new Blob([firmware], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'esp8266_firmware.ino';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    });
-    
-    // Generate customized firmware code
-    function generateFirmware(wifiName, wifiPass, deviceId) {
-        return `#include <ESP8266WiFi.h>
-#include <Firebase_ESP_Client.h>
-
-#include "addons/TokenHelper.h"
-#include "addons/RTDBHelper.h"
-
-// WiFi Settings (Auto-generated by PowerPulse)
-#define WIFI_SSID "${wifiName}"
-#define WIFI_PASSWORD "${wifiPass}"
-
-// Firebase Settings
-#define API_KEY "AIzaSyBgqF29FrfApthkf7Zy-maOKuqyREenCwU"
-#define DATABASE_URL "https://khamba-ache-current-nai-default-rtdb.asia-southeast1.firebasedatabase.app/"
-
-// Device ID (must match your dashboard registration)
-#define DEVICE_ID "${deviceId}"
-
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
-
-unsigned long sendDataPrevMillis = 0;
-bool signupOK = false;
-bool bootEventSent = false;
-
-const unsigned long HEARTBEAT_INTERVAL = 60000;
-const unsigned long WIFI_TIMEOUT = 15000;
-
-void setup() {
-  Serial.begin(115200);
-  Serial.println();
-  Serial.println("===== PowerPulse Monitor =====");
-  Serial.print("Device: ");
-  Serial.println(DEVICE_ID);
-
-  WiFi.persistent(true);
-  WiFi.setAutoConnect(true);
-  WiFi.setAutoReconnect(true);
-  WiFi.mode(WIFI_STA);
-
-  connectWiFi();
-
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL;
-
-  if (Firebase.signUp(&config, &auth, "", "")) {
-    Serial.println("[OK] Firebase Auth OK");
-    signupOK = true;
-  } else {
-    Serial.printf("[ERROR] Auth: %s\\n", config.signer.signupError.message.c_str());
-  }
-
-  config.token_status_callback = tokenStatusCallback;
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
-}
-
-void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-    return;
-  }
-  if (!signupOK || !Firebase.ready()) return;
-
-  if (!bootEventSent) {
-    handleSmartBoot();
-    return;
-  }
-
-  if (millis() - sendDataPrevMillis >= HEARTBEAT_INTERVAL) {
-    sendDataPrevMillis = millis();
-    sendHeartbeat();
-  }
-}
-
-void connectWiFi() {
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("[WiFi] Connecting");
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT) {
-    Serial.print(".");
-    delay(500);
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print(" OK! IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println(" FAILED!");
-  }
-}
-
-void handleSmartBoot() {
-  String basePath = "/devices/" + String(DEVICE_ID);
-
-  double oldHeartbeat = 0;
-  if (Firebase.RTDB.getDouble(&fbdo, (basePath + "/lastHeartbeat").c_str())) {
-    oldHeartbeat = fbdo.to<double>();
-  }
-
-  double newBootTime = 0;
-  if (Firebase.RTDB.setTimestamp(&fbdo, (basePath + "/lastBootTime").c_str())) {
-    newBootTime = fbdo.to<double>();
-  } else { return; }
-
-  if (!Firebase.RTDB.setTimestamp(&fbdo, (basePath + "/lastHeartbeat").c_str())) { return; }
-
-  String localIP = WiFi.localIP().toString();
-  Firebase.RTDB.setString(&fbdo, (basePath + "/deviceIP").c_str(), localIP.c_str());
-
-  if (oldHeartbeat > 0 && newBootTime > oldHeartbeat) {
-    double outageDurationMs = newBootTime - oldHeartbeat;
-    int outageMins = (int)(outageDurationMs / 60000.0);
-
-    FirebaseJson historyEntry;
-    historyEntry.set("type", "outage");
-    historyEntry.set("cutTime", oldHeartbeat);
-    historyEntry.set("restoredTime", newBootTime);
-    historyEntry.set("durationMins", outageMins);
-    Firebase.RTDB.pushJSON(&fbdo, (basePath + "/history").c_str(), &historyEntry);
-  }
-
-  bootEventSent = true;
-  sendDataPrevMillis = millis();
-  Serial.println("[OK] Boot complete!");
-}
-
-void sendHeartbeat() {
-  String path = "/devices/" + String(DEVICE_ID) + "/lastHeartbeat";
-  if (Firebase.RTDB.setTimestamp(&fbdo, path.c_str())) {
-    Serial.print("[OK] Heartbeat: ");
-    Serial.println(fbdo.to<double>(), 0);
-  } else {
-    Serial.print("[ERROR] ");
-    Serial.println(fbdo.errorReason());
-  }
-}
-`;
-    }
-    </script>
+    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 </body>
 </html>
+

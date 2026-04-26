@@ -1,5 +1,9 @@
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <WiFiManager.h>         // WiFiManager by tzapu (Install from Library Manager)
 #include <Firebase_ESP_Client.h>
+#include <EEPROM.h>
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -7,21 +11,16 @@
 #include "addons/RTDBHelper.h"
 
 /* ============================================================
-   1. ওয়াইফাই (WiFi) ক্রেডেনশিয়ালস দিন
-   ============================================================ */
-#define WIFI_SSID "YOUR_WIFI_NAME"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
-
-/* ============================================================
-   2. ফায়ারবেস (Firebase) ক্রেডেনশিয়ালস
+   ফায়ারবেস (Firebase) ক্রেডেনশিয়ালস
    ============================================================ */
 #define API_KEY "AIzaSyBgqF29FrfApthkf7Zy-maOKuqyREenCwU"
 #define DATABASE_URL "https://khamba-ache-current-nai-default-rtdb.asia-southeast1.firebasedatabase.app/"
 
 /* ============================================================
-   3. ডিভাইসের একটি ইউনিক আইডি দিন (ড্যাশবোর্ডে যেটা দিয়েছেন)
+   ডিভাইস আইডি — ESP Chip ID থেকে Auto-Generate হবে
+   যেমন: PP_8A3F2C (প্রতিটি ESP এর জন্য ইউনিক)
    ============================================================ */
-#define DEVICE_ID "esp_mir_10"
+String DEVICE_ID = "";
 
 // Firebase Data objects
 FirebaseData fbdo;
@@ -35,27 +34,40 @@ bool bootEventSent = false;
 
 // Heartbeat প্রতি ১ মিনিটে পাঠাবে
 const unsigned long HEARTBEAT_INTERVAL = 60000;
-// WiFi Timeout
-const unsigned long WIFI_TIMEOUT = 15000;
+
+/* ============================================================
+   WiFiManager কিভাবে কাজ করে:
+
+   ১. ESP বুট হয় → আগের সেভ করা WiFi তে কানেক্ট করার চেষ্টা করে
+   ২. যদি WiFi না পায় → "PowerPulse-Setup" নামে Hotspot তৈরি করে
+   ৩. User মোবাইল/PC দিয়ে ওই Hotspot এ কানেক্ট করে
+   ৪. একটি Captive Portal খোলে — সেখানে WiFi Name ও Password দেয়
+   ৫. ESP সেভ করে, রিবুট হয়ে WiFi তে কানেক্ট হয়
+   ৬. পরের বার থেকে সরাসরি কানেক্ট হয় (আবার portal আসবে না)
+
+   Device ID:
+   ESP8266 এর Chip ID থেকে auto-generate হয়
+   যেমন: PP_8A3F2C — প্রতিটি চিপের জন্য ইউনিক
+   ============================================================ */
 
 /* ============================================================
    কিভাবে Accurate ডাটা কাজ করে (Smart Boot Sequence):
-   
+
    ESP বুট হলে:
    ১. Firebase থেকে পুরনো lastHeartbeat পড়ে (GET)
       → এটি ≈ কারেন্ট যাওয়ার সময় (±১ মিনিট accuracy)
-   
+
    ২. নতুন lastBootTime সেট করে (Timestamp)
       → এটি = কারেন্ট আসার একদম সঠিক সময়
-   
+
    ৩. Duration ক্যালকুলেট করে:
       → outage = bootTime - পুরনো lastHeartbeat
-   
+
    ৪. Firebase-এ history তে সেভ করে:
       → {type, cutTime, restoredTime, durationMinutes}
-   
+
    ৫. নতুন lastHeartbeat সেট করে (Timestamp)
-   
+
    ফলাফল: ড্যাশবোর্ডে কারেন্ট যাওয়া-আসার
    সম্পূর্ণ হিস্ট্রি Date-Time সহ দেখা যাবে!
    ============================================================ */
@@ -64,18 +76,68 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
   Serial.println("===== PowerPulse ESP8266 Monitor =====");
+
+  // ──────────────────────────────────────────────
+  // Auto-generate Device ID from ESP Chip ID
+  // ──────────────────────────────────────────────
+  uint32_t chipId = ESP.getChipId();
+  char idBuf[16];
+  snprintf(idBuf, sizeof(idBuf), "PP_%06X", chipId);
+  DEVICE_ID = String(idBuf);
+
   Serial.print("Device ID: ");
   Serial.println(DEVICE_ID);
 
-  // দ্রুত WiFi কানেক্ট
-  WiFi.persistent(true);
-  WiFi.setAutoConnect(true);
-  WiFi.setAutoReconnect(true);
-  WiFi.mode(WIFI_STA);
+  // ──────────────────────────────────────────────
+  // WiFiManager Setup
+  // ──────────────────────────────────────────────
+  WiFiManager wm;
 
-  connectWiFi();
+  // WiFiManager timeout — ৩ মিনিট পর portal বন্ধ হবে এবং ESP রিবুট হবে
+  wm.setConfigPortalTimeout(180);
 
+  // Custom HTML: Device ID দেখানোর জন্য (Copy button সহ)
+  // এই HTML WiFiManager portal এর উপরে দেখাবে
+  String customHtml = "<br/>"
+    "<div style='text-align:center;background:#1a1a2e;padding:15px;border-radius:10px;margin-bottom:15px;'>"
+      "<p style='color:#94a3b8;margin:0 0 8px 0;font-size:14px;'>📋 আপনার Device ID</p>"
+      "<div style='display:flex;align-items:center;justify-content:center;gap:8px;'>"
+        "<input type='text' value='" + DEVICE_ID + "' id='devId' readonly "
+          "style='background:#0b0d17;color:#fde68a;border:1px solid #3b82f6;border-radius:8px;"
+          "padding:10px 15px;font-family:monospace;font-size:18px;font-weight:bold;text-align:center;"
+          "width:180px;'/>"
+        "<button onclick=\"var i=document.getElementById('devId');i.select();i.setSelectionRange(0,99);"
+          "document.execCommand('copy');this.innerText='✅';setTimeout(function(){document.querySelector('#cpBtn').innerText='📋 Copy';},2000);\" "
+          "id='cpBtn' style='background:#3b82f6;color:white;border:none;border-radius:8px;"
+          "padding:10px 15px;cursor:pointer;font-size:14px;white-space:nowrap;'>📋 Copy</button>"
+      "</div>"
+      "<p style='color:#f59e0b;margin:8px 0 0 0;font-size:12px;'>⚠️ এই ID টি কপি করে রাখুন! Dashboard এ লাগবে।</p>"
+    "</div>";
+
+  // WiFiManager portal এ custom HTML যোগ করো
+  WiFiManagerParameter customDeviceIdDisplay(customHtml.c_str());
+  wm.addParameter(&customDeviceIdDisplay);
+
+  // AP (Hotspot) Name ও Password
+  // Password ছাড়া open hotspot — সবাই কানেক্ট করতে পারবে
+  Serial.println("[WiFi] Starting WiFiManager...");
+  Serial.println("[WiFi] If no saved WiFi found, connect to: PowerPulse-Setup");
+
+  // autoConnect: আগে সেভ করা WiFi তে কানেক্ট করার চেষ্টা করবে
+  // না পারলে "PowerPulse-Setup" নামে AP তৈরি করবে
+  if (!wm.autoConnect("PowerPulse-Setup")) {
+    Serial.println("[WiFi] Failed to connect or timeout! Restarting...");
+    delay(3000);
+    ESP.restart();
+  }
+
+  // WiFi কানেক্ট হয়ে গেছে!
+  Serial.print("[WiFi] Connected! IP: ");
+  Serial.println(WiFi.localIP());
+
+  // ──────────────────────────────────────────────
   // Firebase কনফিগারেশন
+  // ──────────────────────────────────────────────
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
 
@@ -96,8 +158,9 @@ void setup() {
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[WARN] WiFi lost! Reconnecting...");
-    connectWiFi();
+    Serial.println("[WARN] WiFi lost! Restarting to reconnect...");
+    delay(3000);
+    ESP.restart(); // WiFiManager আবার চালু হবে
     return;
   }
 
@@ -116,28 +179,9 @@ void loop() {
   }
 }
 
-// ===== WiFi কানেক্ট =====
-void connectWiFi() {
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("[WiFi] Connecting");
-
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT) {
-    Serial.print(".");
-    delay(500);
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print(" OK! IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println(" FAILED! Retrying...");
-  }
-}
-
 // ===== Smart Boot: পুরো Outage ইভেন্ট ক্যালকুলেট ও সেভ =====
 void handleSmartBoot() {
-  String basePath = "/devices/" + String(DEVICE_ID);
+  String basePath = "/devices/" + DEVICE_ID;
 
   // ──────────────────────────────────────────────
   // ধাপ ১: পুরনো lastHeartbeat পড়ো (কারেন্ট যাওয়ার আনুমানিক সময়)
@@ -158,13 +202,17 @@ void handleSmartBoot() {
   double newBootTime = 0;
 
   if (Firebase.RTDB.setTimestamp(&fbdo, (basePath + "/lastBootTime").c_str())) {
-    newBootTime = fbdo.to<double>();
+    // setTimestamp এর পর সরাসরি to<double>() কাজ নাও করতে পারে,
+    // তাই আলাদাভাবে GET করে ভ্যালু পড়ো
+    if (Firebase.RTDB.getDouble(&fbdo, (basePath + "/lastBootTime").c_str())) {
+      newBootTime = fbdo.to<double>();
+    }
     Serial.print("[BOOT] Power restored at: ");
     Serial.println(newBootTime, 0);
   } else {
     Serial.print("[ERROR] Failed to set bootTime: ");
     Serial.println(fbdo.errorReason());
-    return; // পরের লুপে আবার চেষ্টা করবে
+    return;
   }
 
   // ──────────────────────────────────────────────
@@ -177,12 +225,23 @@ void handleSmartBoot() {
   }
 
   // ──────────────────────────────────────────────
-  // ধাপ ৩.৫: ESP এর IP Address Firebase-এ পাঠাও (ভেরিফিকেশনের জন্য)
+  // ধাপ ৩.৫: IP Address Firebase-এ পাঠাও (Fake data ধরতে কাজে লাগবে)
   // ──────────────────────────────────────────────
+  // Local IP (রাউটারের ভেতরের ঠিকানা)
   String localIP = WiFi.localIP().toString();
-  Firebase.RTDB.setString(&fbdo, (basePath + "/deviceIP").c_str(), localIP.c_str());
-  Serial.print("[BOOT] Device IP saved: ");
+  Firebase.RTDB.setString(&fbdo, (basePath + "/localIP").c_str(), localIP.c_str());
+  Serial.print("[BOOT] Local IP: ");
   Serial.println(localIP);
+
+  // Public IP (ISP এর দেওয়া ঠিকানা — এটি দিয়ে শহর জানা যায়)
+  String publicIP = getPublicIP();
+  if (publicIP.length() > 0) {
+    Firebase.RTDB.setString(&fbdo, (basePath + "/publicIP").c_str(), publicIP.c_str());
+    Serial.print("[BOOT] Public IP: ");
+    Serial.println(publicIP);
+  } else {
+    Serial.println("[WARN] Could not get public IP");
+  }
 
   // ──────────────────────────────────────────────
   // ধাপ ৪: Outage হিস্ট্রি ক্যালকুলেট ও সেভ করো
@@ -222,7 +281,7 @@ void handleSmartBoot() {
 
 // ===== নিয়মিত Heartbeat =====
 void sendHeartbeat() {
-  String path = "/devices/" + String(DEVICE_ID) + "/lastHeartbeat";
+  String path = "/devices/" + DEVICE_ID + "/lastHeartbeat";
 
   if (Firebase.RTDB.setTimestamp(&fbdo, path.c_str())) {
     Serial.print("[OK] Heartbeat: ");
@@ -231,4 +290,22 @@ void sendHeartbeat() {
     Serial.print("[ERROR] ");
     Serial.println(fbdo.errorReason());
   }
+}
+
+// ===== Public IP বের করো (Fake data detection এর জন্য) =====
+String getPublicIP() {
+  WiFiClient client;
+  HTTPClient http;
+  String ip = "";
+
+  http.begin(client, "http://api.ipify.org/");
+  int httpCode = http.GET();
+
+  if (httpCode == HTTP_CODE_OK) {
+    ip = http.getString();
+    ip.trim();
+  }
+
+  http.end();
+  return ip;
 }
