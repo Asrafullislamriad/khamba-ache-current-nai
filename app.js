@@ -102,7 +102,7 @@ function fetchRealtimeData() {
                 }
                 
                 // যদি এই মুহূর্তে offline থাকে, বর্তমান outage duration যোগ করো
-                const isOnline = (device.status === 'online');
+                const isOnline = device.status ? (device.status === 'online') : (lastHB !== 0 && (now - lastHB) <= HEARTBEAT_THRESHOLD_MS);
                 if (!isOnline && lastHB > 0) {
                     const currentOutageMins = Math.floor((now - lastHB) / 60000);
                     totalOutageMins24h += currentOutageMins;
@@ -129,7 +129,7 @@ function fetchRealtimeData() {
                     totalLoadShedding24h: totalOutageMins24h,
                     history: deviceHistory,
                     rawOutages: rawOutages,
-                    status: device.status || 'offline'
+                    status: device.status || (isOnline ? 'online' : 'offline')
                 });
             });
         }
