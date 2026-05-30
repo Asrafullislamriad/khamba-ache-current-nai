@@ -119,7 +119,29 @@
             </div>
 
             <div class="drawer-body">
-                <h3><i class="fa-solid fa-clock-rotate-left"></i> Outage History</h3>
+                <!-- 24h Availability Section -->
+                <div class="drawer-section">
+                    <h3><i class="fa-solid fa-chart-simple"></i> 24h Availability Strip</h3>
+                    <div class="availability-container">
+                        <div class="availability-bar" id="availabilityBar">
+                            <!-- 24 blocks injected by JS -->
+                        </div>
+                        <div class="availability-labels">
+                            <span>24h ago</span>
+                            <span>Now</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 7-Day Trend Section -->
+                <div class="drawer-section" style="margin-top: 2rem; margin-bottom: 2rem;">
+                    <h3><i class="fa-solid fa-chart-line"></i> 7-Day Outage Trend (Hours)</h3>
+                    <div class="chart-container" style="position: relative; height: 180px; width: 100%;">
+                        <canvas id="outageChart"></canvas>
+                    </div>
+                </div>
+
+                <h3><i class="fa-solid fa-clock-rotate-left"></i> Detailed Outage History</h3>
                 <div class="history-timeline" id="historyTimeline">
                     <!-- Timeline items injected here -->
                 </div>
@@ -127,6 +149,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@
       "chipFamily": "ESP8266",
       "parts": [
         {
-          "path": "powerpulse.bin",
+          "path": "esp8266_firmware.ino.bin",
           "offset": 0
         }
       ]

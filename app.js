@@ -19,6 +19,7 @@ const database = getDatabase(app);
 
 // State variables
 let monitors = [];
+let chartInstance = null; // Holds the Chart.js instance for the drawer
 const HEARTBEAT_THRESHOLD_MS = 2.5 * 60 * 1000; // 2.5 minutes (ESP sends every 1 min, so ±1 min accuracy)
 
 // DOM Elements
@@ -101,7 +102,7 @@ function fetchRealtimeData() {
                 }
                 
                 // যদি এই মুহূর্তে offline থাকে, বর্তমান outage duration যোগ করো
-                const isOnline = (lastHB !== 0 && (now - lastHB) <= HEARTBEAT_THRESHOLD_MS);
+                const isOnline = (device.status === 'online');
                 if (!isOnline && lastHB > 0) {
                     const currentOutageMins = Math.floor((now - lastHB) / 60000);
                     totalOutageMins24h += currentOutageMins;
@@ -114,14 +115,21 @@ function fetchRealtimeData() {
                     });
                 }
 
+                let rawOutages = [];
+                if (device.history) {
+                    rawOutages = Object.values(device.history);
+                }
+
                 monitors.push({
                     id: deviceId,
                     name: device.name || "Unknown Area",
                     lastHeartbeat: lastHB,
                     lastBootTime: bootTime,
-                    deviceIP: device.deviceIP || "N/A",
+                    deviceIP: device.publicIP || device.localIP || device.deviceIP || "N/A",
                     totalLoadShedding24h: totalOutageMins24h,
-                    history: deviceHistory
+                    history: deviceHistory,
+                    rawOutages: rawOutages,
+                    status: device.status || 'offline'
                 });
             });
         }
@@ -167,9 +175,8 @@ function updateSystemStatus() {
     let totalOutageMins = 0;
 
     monitors.forEach(monitor => {
-        // Is offline if heartbeat is missing or older than 2 minutes
-        const timeSinceBeat = now - monitor.lastHeartbeat;
-        monitor.isOnline = (monitor.lastHeartbeat !== 0 && timeSinceBeat <= HEARTBEAT_THRESHOLD_MS);
+        // Status is checked directly from the status property updated via onDisconnect
+        monitor.isOnline = (monitor.status === 'online');
 
         if (!monitor.isOnline) outages++;
         totalOutageMins += monitor.totalLoadShedding24h;
@@ -208,6 +215,11 @@ function renderMonitors(filter) {
         const statusClass = monitor.isOnline ? 'status-online' : 'status-offline';
         const statusText = monitor.isOnline ? 'Power ON' : 'Load Shedding Active';
         
+        // dynamic labels based on online/offline state
+        const signalLabel = monitor.isOnline ? 'Connected Since' : 'Power Cut Since';
+        const signalTime = monitor.isOnline ? timeAgo(monitor.lastBootTime) : timeAgo(monitor.lastHeartbeat);
+        const signalIcon = monitor.isOnline ? 'fa-circle-check' : 'fa-plug-circle-xmark';
+
         const card = document.createElement('div');
         card.className = `monitor-card glass-panel ${statusClass}`;
         
@@ -225,8 +237,8 @@ function renderMonitors(filter) {
             
             <div class="card-stats">
                 <div class="c-stat">
-                    <span>Last Signal Received</span>
-                    <span><i class="fa-solid fa-tower-broadcast"></i> ${timeAgo(monitor.lastHeartbeat)}</span>
+                    <span>${signalLabel}</span>
+                    <span><i class="fa-solid ${signalIcon}"></i> ${signalTime}</span>
                 </div>
                 <div class="c-stat" style="text-align:right;">
                     <span>Outage (Last 24h)</span>
@@ -264,6 +276,185 @@ function openHistoryDrawer(monitor) {
     const ipEl = document.getElementById('drawerDeviceIP');
     if (ipEl) ipEl.textContent = monitor.deviceIP;
 
+    const now = new Date().getTime();
+
+    // ──────────────────────────────────────────────
+    // ১. ২৪ ঘণ্টার পাওয়ার বার (Availability Strip) রেন্ডার করো
+    // ──────────────────────────────────────────────
+    const availabilityBar = document.getElementById('availabilityBar');
+    if (availabilityBar) {
+        availabilityBar.innerHTML = '';
+        const oneHour = 60 * 60 * 1000;
+        
+        // ২৪টি ব্লক জেনারেট করো (২৩ ঘণ্টা আগে থেকে বর্তমান ঘণ্টা পর্যন্ত)
+        for (let i = 23; i >= 0; i--) {
+            const slotStart = now - (i + 1) * oneHour;
+            const slotEnd = now - i * oneHour;
+            let offlineMins = 0;
+            
+            // আউটেজ চেক
+            if (monitor.rawOutages) {
+                monitor.rawOutages.forEach(outage => {
+                    const cut = outage.cutTime;
+                    const restored = outage.restoredTime || now;
+                    
+                    const overlapStart = Math.max(cut, slotStart);
+                    const overlapEnd = Math.min(restored, slotEnd);
+                    
+                    if (overlapStart < overlapEnd) {
+                        offlineMins += (overlapEnd - overlapStart) / 60000;
+                    }
+                });
+            }
+            
+            // রানিং অফলাইন ইভেন্ট
+            if (monitor.status !== 'online' && monitor.lastHeartbeat > 0) {
+                const cut = monitor.lastHeartbeat;
+                const restored = now;
+                
+                const overlapStart = Math.max(cut, slotStart);
+                const overlapEnd = Math.min(restored, slotEnd);
+                
+                if (overlapStart < overlapEnd) {
+                    offlineMins += (overlapEnd - overlapStart) / 60000;
+                }
+            }
+            
+            const dateObj = new Date(slotStart);
+            const timeLabel = dateObj.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const block = document.createElement('div');
+            block.className = 'availability-block';
+            
+            if (offlineMins > 2) {
+                block.classList.add('offline');
+                block.setAttribute('data-tooltip', `${timeLabel}: Load Shedding (${Math.round(offlineMins)}m)`);
+            } else {
+                block.classList.add('online');
+                block.setAttribute('data-tooltip', `${timeLabel}: Power Available`);
+            }
+            availabilityBar.appendChild(block);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // ২. ৭ দিনের ট্রেন্ড চার্ট (Chart.js) রেন্ডার করো
+    // ──────────────────────────────────────────────
+    const chartLabels = [];
+    const chartData = [];
+    const dayMs = 24 * 60 * 60 * 1000;
+    
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date(now - i * dayMs);
+        const label = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        chartLabels.push(label);
+        
+        const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        const endOfDay = startOfDay + dayMs;
+        let dayOfflineMins = 0;
+        
+        if (monitor.rawOutages) {
+            monitor.rawOutages.forEach(outage => {
+                const cut = outage.cutTime;
+                const restored = outage.restoredTime || now;
+                
+                const overlapStart = Math.max(cut, startOfDay);
+                const overlapEnd = Math.min(restored, endOfDay);
+                
+                if (overlapStart < overlapEnd) {
+                    dayOfflineMins += (overlapEnd - overlapStart) / 60000;
+                }
+            });
+        }
+        
+        if (monitor.status !== 'online' && monitor.lastHeartbeat > 0) {
+            const cut = monitor.lastHeartbeat;
+            const restored = now;
+            
+            const overlapStart = Math.max(cut, startOfDay);
+            const overlapEnd = Math.min(restored, endOfDay);
+            
+            if (overlapStart < overlapEnd) {
+                dayOfflineMins += (overlapEnd - overlapStart) / 60000;
+            }
+        }
+        
+        const hours = (dayOfflineMins / 60).toFixed(1);
+        chartData.push(parseFloat(hours));
+    }
+    
+    // চার্ট রিস্টার্ট
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+    
+    const chartCanvas = document.getElementById('outageChart');
+    if (chartCanvas) {
+        const ctx = chartCanvas.getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 150);
+        gradient.addColorStop(0, 'rgba(239, 68, 68, 0.8)');   // Red glow top
+        gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');  // Fade bottom
+        
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Outage Hours',
+                    data: chartData,
+                    backgroundColor: gradient,
+                    borderColor: '#ef4444',
+                    borderWidth: 1.5,
+                    borderRadius: 6,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` Outage: ${context.raw}h`;
+                            }
+                        },
+                        backgroundColor: 'rgba(15, 18, 30, 0.95)',
+                        titleColor: '#fff',
+                        bodyColor: '#cbd5e1',
+                        borderColor: 'rgba(255, 255, 255, 0.08)',
+                        borderWidth: 1,
+                        titleFont: { family: "'Outfit', sans-serif" },
+                        bodyFont: { family: "'Outfit', sans-serif" }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { family: "'Outfit', sans-serif", size: 10 }
+                        }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { family: "'Outfit', sans-serif", size: 10 },
+                            stepSize: 1,
+                            callback: function(value) { return value + 'h'; }
+                        },
+                        min: 0
+                    }
+                }
+            }
+        });
+    }
+
+    // ──────────────────────────────────────────────
+    // ৩. হিস্ট্রি টাইমলাইন রেন্ডার করো
+    // ──────────────────────────────────────────────
     dTimeline.innerHTML = '';
     
     if (!monitor.history || monitor.history.length === 0) {

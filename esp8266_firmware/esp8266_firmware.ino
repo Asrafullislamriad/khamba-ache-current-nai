@@ -4,6 +4,7 @@
 #include <WiFiManager.h>         // WiFiManager by tzapu (Install from Library Manager)
 #include <Firebase_ESP_Client.h>
 #include <EEPROM.h>
+#include <user_interface.h>      // For ESP8266 Reset Info
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -31,8 +32,9 @@ FirebaseConfig config;
 unsigned long sendDataPrevMillis = 0;
 bool signupOK = false;
 bool bootEventSent = false;
+bool wasFirebaseReady = false; // Tracks Firebase connection status in loop
 
-// Heartbeat প্রতি ১ মিনিটে পাঠাবে
+// Heartbeat প্রতি ১ মিনিটে পাঠাবে (onDisconnect এর কারণে এটি আর ডাটাবেসে অবিরত পাঠানো লাগবে না)
 const unsigned long HEARTBEAT_INTERVAL = 60000;
 
 /* ============================================================
@@ -164,18 +166,38 @@ void loop() {
     return;
   }
 
-  if (!signupOK || !Firebase.ready()) return;
-
-  // ====== ধাপ ১: Smart Boot Event (একবারই) ======
-  if (!bootEventSent) {
-    handleSmartBoot();
-    return;
+  bool isReady = Firebase.ready() && signupOK;
+  
+  if (isReady) {
+    if (!wasFirebaseReady) {
+      wasFirebaseReady = true;
+      Serial.println("[OK] Firebase Connection Ready.");
+      
+      if (!bootEventSent) {
+        handleSmartBoot();
+      } else {
+        handleReconnection();
+      }
+    }
+  } else {
+    wasFirebaseReady = false;
   }
+}
 
-  // ====== ধাপ ২: প্রতি ১ মিনিটে Heartbeat ======
-  if (millis() - sendDataPrevMillis >= HEARTBEAT_INTERVAL) {
-    sendDataPrevMillis = millis();
-    sendHeartbeat();
+// ===== Reconnection: কেবল স্ট্যাটাস অনলাইন ও অন-ডিসকানেক্ট সেট করবে =====
+void handleReconnection() {
+  String basePath = "/devices/" + DEVICE_ID;
+  Serial.println("[RECONNECT] Reconnecting to Firebase. Setting status to online...");
+
+  // ১. অন-ডিসকানেক্ট রুলস আবার রেজিস্টার করো
+  Firebase.RTDB.onDisconnectSetString(&fbdo, (basePath + "/status").c_str(), "offline");
+  Firebase.RTDB.onDisconnectSetTimestamp(&fbdo, (basePath + "/lastHeartbeat").c_str());
+
+  // ২. স্ট্যাটাস অনলাইন সেট করো
+  if (Firebase.RTDB.setString(&fbdo, (basePath + "/status").c_str(), "online")) {
+    Serial.println("[STATUS] Device marked ONLINE.");
+  } else {
+    Serial.printf("[ERROR] Failed to set status: %s\n", fbdo.errorReason().c_str());
   }
 }
 
@@ -183,57 +205,119 @@ void loop() {
 void handleSmartBoot() {
   String basePath = "/devices/" + DEVICE_ID;
 
-  // ──────────────────────────────────────────────
-  // ধাপ ১: পুরনো lastHeartbeat পড়ো (কারেন্ট যাওয়ার আনুমানিক সময়)
-  // ──────────────────────────────────────────────
-  double oldHeartbeat = 0;
+  Serial.println("[BOOT] Smart Boot Event Triggered.");
 
-  if (Firebase.RTDB.getDouble(&fbdo, (basePath + "/lastHeartbeat").c_str())) {
-    oldHeartbeat = fbdo.to<double>();
-    Serial.print("[BOOT] Old lastHeartbeat found: ");
-    Serial.println(oldHeartbeat, 0);
+  // ──────────────────────────────────────────────
+  // ফায়ারবেস অন-ডিসকানেক্ট রুলস সেটআপ করো
+  // ──────────────────────────────────────────────
+  if (Firebase.RTDB.onDisconnectSetString(&fbdo, (basePath + "/status").c_str(), "offline")) {
+    Serial.println("[onDisconnect] Registered status offline successfully.");
   } else {
-    Serial.println("[BOOT] No previous heartbeat (fresh device).");
+    Serial.printf("[onDisconnect] Failed to register status: %s\n", fbdo.errorReason().c_str());
+  }
+
+  if (Firebase.RTDB.onDisconnectSetTimestamp(&fbdo, (basePath + "/lastHeartbeat").c_str())) {
+    Serial.println("[onDisconnect] Registered lastHeartbeat timestamp successfully.");
+  } else {
+    Serial.printf("[onDisconnect] Failed to register lastHeartbeat: %s\n", fbdo.errorReason().c_str());
   }
 
   // ──────────────────────────────────────────────
-  // ধাপ ২: নতুন lastBootTime সেট করো (কারেন্ট আসার সঠিক সময়)
+  // ডিভাইস কানেক্ট হলে স্ট্যাটাস "online" সেট করো
   // ──────────────────────────────────────────────
-  double newBootTime = 0;
+  if (Firebase.RTDB.setString(&fbdo, (basePath + "/status").c_str(), "online")) {
+    Serial.println("[STATUS] Device marked ONLINE.");
+  } else {
+    Serial.printf("[ERROR] Failed to set status: %s\n", fbdo.errorReason().c_str());
+  }
 
-  if (Firebase.RTDB.setTimestamp(&fbdo, (basePath + "/lastBootTime").c_str())) {
-    // setTimestamp এর পর সরাসরি to<double>() কাজ নাও করতে পারে,
-    // তাই আলাদাভাবে GET করে ভ্যালু পড়ো
-    if (Firebase.RTDB.getDouble(&fbdo, (basePath + "/lastBootTime").c_str())) {
-      newBootTime = fbdo.to<double>();
+  // ──────────────────────────────────────────────
+  // রিসেট রিজন চেক করো (কেবলমাত্র রিয়াল লোডশেডিংয়ের জন্য)
+  // ──────────────────────────────────────────────
+  rst_info *resetInfo = ESP.getResetInfoPtr();
+  bool isPowerCut = (resetInfo->reason == REASON_DEFAULT_RST || resetInfo->reason == REASON_EXT_SYS_RST);
+  
+  Serial.print("[BOOT] Reset Reason: ");
+  Serial.println(ESP.getResetInfo());
+
+  if (isPowerCut) {
+    // ──────────────────────────────────────────────
+    // DHCP বা কানেকশনের জন্য পুরনো lastHeartbeat পড়ো
+    // ──────────────────────────────────────────────
+    double oldHeartbeat = 0;
+
+    if (Firebase.RTDB.getDouble(&fbdo, (basePath + "/lastHeartbeat").c_str())) {
+      oldHeartbeat = fbdo.to<double>();
+      Serial.print("[BOOT] Old lastHeartbeat found: ");
+      Serial.println(oldHeartbeat, 0);
+    } else {
+      Serial.println("[BOOT] No previous heartbeat (fresh device).");
     }
-    Serial.print("[BOOT] Power restored at: ");
-    Serial.println(newBootTime, 0);
+
+    // ──────────────────────────────────────────────
+    // ধাপ ২: নতুন lastBootTime সেট করো (কারেন্ট আসার সঠিক সময়)
+    // ──────────────────────────────────────────────
+    double newBootTime = 0;
+
+    if (Firebase.RTDB.setTimestamp(&fbdo, (basePath + "/lastBootTime").c_str())) {
+      if (Firebase.RTDB.getDouble(&fbdo, (basePath + "/lastBootTime").c_str())) {
+        newBootTime = fbdo.to<double>();
+      }
+      Serial.print("[BOOT] Power restored at: ");
+      Serial.println(newBootTime, 0);
+    } else {
+      Serial.print("[ERROR] Failed to set bootTime: ");
+      Serial.println(fbdo.errorReason());
+      return;
+    }
+
+    // ──────────────────────────────────────────────
+    // ধাপ ৩: নতুন lastHeartbeat সেট করো (পরবর্তী আউটেজের বেসলাইন)
+    // ──────────────────────────────────────────────
+    if (!Firebase.RTDB.setTimestamp(&fbdo, (basePath + "/lastHeartbeat").c_str())) {
+      Serial.print("[ERROR] Failed to set heartbeat: ");
+      Serial.println(fbdo.errorReason());
+      return;
+    }
+
+    // ──────────────────────────────────────────────
+    // ধাপ ৪: Outage হিস্ট্রি ক্যালকুলেট ও সেভ করো
+    // ──────────────────────────────────────────────
+    if (oldHeartbeat > 0 && newBootTime > oldHeartbeat) {
+      double outageDurationMs = newBootTime - oldHeartbeat;
+      int outageMins = (int)(outageDurationMs / 60000.0);
+
+      Serial.print("[BOOT] Outage detected! Duration: ");
+      Serial.print(outageMins);
+      Serial.println(" minutes");
+
+      FirebaseJson historyEntry;
+      historyEntry.set("type", "outage");
+      historyEntry.set("cutTime", oldHeartbeat);       // কারেন্ট যাওয়ার সময়
+      historyEntry.set("restoredTime", newBootTime);    // কারেন্ট আসার সময়
+      historyEntry.set("durationMins", outageMins);     // কতক্ষণ ছিল না
+
+      if (Firebase.RTDB.pushJSON(&fbdo, (basePath + "/history").c_str(), &historyEntry)) {
+        Serial.println("[OK] Outage history saved to Firebase!");
+      } else {
+        Serial.print("[ERROR] Failed to save history: ");
+        Serial.println(fbdo.errorReason());
+      }
+    } else {
+      Serial.println("[BOOT] First boot or no previous data. No outage to record.");
+    }
   } else {
-    Serial.print("[ERROR] Failed to set bootTime: ");
-    Serial.println(fbdo.errorReason());
-    return;
+    Serial.println("[BOOT] Software restart detected (WiFi drop or reboot). Skipping outage history recording.");
   }
 
   // ──────────────────────────────────────────────
-  // ধাপ ৩: নতুন lastHeartbeat সেট করো
+  // ধাপ ৫: IP Address Firebase-এ পাঠাও
   // ──────────────────────────────────────────────
-  if (!Firebase.RTDB.setTimestamp(&fbdo, (basePath + "/lastHeartbeat").c_str())) {
-    Serial.print("[ERROR] Failed to set heartbeat: ");
-    Serial.println(fbdo.errorReason());
-    return;
-  }
-
-  // ──────────────────────────────────────────────
-  // ধাপ ৩.৫: IP Address Firebase-এ পাঠাও (Fake data ধরতে কাজে লাগবে)
-  // ──────────────────────────────────────────────
-  // Local IP (রাউটারের ভেতরের ঠিকানা)
   String localIP = WiFi.localIP().toString();
   Firebase.RTDB.setString(&fbdo, (basePath + "/localIP").c_str(), localIP.c_str());
   Serial.print("[BOOT] Local IP: ");
   Serial.println(localIP);
 
-  // Public IP (ISP এর দেওয়া ঠিকানা — এটি দিয়ে শহর জানা যায়)
   String publicIP = getPublicIP();
   if (publicIP.length() > 0) {
     Firebase.RTDB.setString(&fbdo, (basePath + "/publicIP").c_str(), publicIP.c_str());
@@ -243,54 +327,11 @@ void handleSmartBoot() {
     Serial.println("[WARN] Could not get public IP");
   }
 
-  // ──────────────────────────────────────────────
-  // ধাপ ৪: Outage হিস্ট্রি ক্যালকুলেট ও সেভ করো
-  // ──────────────────────────────────────────────
-  if (oldHeartbeat > 0 && newBootTime > oldHeartbeat) {
-    // Outage Duration ক্যালকুলেট
-    double outageDurationMs = newBootTime - oldHeartbeat;
-    int outageMins = (int)(outageDurationMs / 60000.0);
-
-    Serial.print("[BOOT] Outage detected! Duration: ");
-    Serial.print(outageMins);
-    Serial.println(" minutes");
-
-    // Firebase-এ হিস্ট্রি এন্ট্রি পুশ করো
-    // push() একটি ইউনিক ID দিয়ে নতুন চাইল্ড তৈরি করে
-    FirebaseJson historyEntry;
-    historyEntry.set("type", "outage");
-    historyEntry.set("cutTime", oldHeartbeat);       // কারেন্ট যাওয়ার সময় (±1 min)
-    historyEntry.set("restoredTime", newBootTime);    // কারেন্ট আসার সময় (exact)
-    historyEntry.set("durationMins", outageMins);     // কতক্ষণ ছিল না
-
-    if (Firebase.RTDB.pushJSON(&fbdo, (basePath + "/history").c_str(), &historyEntry)) {
-      Serial.println("[OK] Outage history saved to Firebase!");
-    } else {
-      Serial.print("[ERROR] Failed to save history: ");
-      Serial.println(fbdo.errorReason());
-    }
-  } else {
-    Serial.println("[BOOT] First boot or no previous data. No outage to record.");
-  }
-
   bootEventSent = true;
-  sendDataPrevMillis = millis();
-  Serial.println("[OK] Boot sequence complete. Starting heartbeat loop...");
+  Serial.println("[OK] Boot sequence complete. Monitoring connection state...");
   Serial.println();
 }
 
-// ===== নিয়মিত Heartbeat =====
-void sendHeartbeat() {
-  String path = "/devices/" + DEVICE_ID + "/lastHeartbeat";
-
-  if (Firebase.RTDB.setTimestamp(&fbdo, path.c_str())) {
-    Serial.print("[OK] Heartbeat: ");
-    Serial.println(fbdo.to<double>(), 0);
-  } else {
-    Serial.print("[ERROR] ");
-    Serial.println(fbdo.errorReason());
-  }
-}
 
 // ===== Public IP বের করো (Fake data detection এর জন্য) =====
 String getPublicIP() {
