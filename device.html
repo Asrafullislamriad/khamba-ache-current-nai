@@ -85,9 +85,16 @@
                     </div>
                 </section>
 
-                <!-- 7-Day Trend Chart -->
+                <!-- Outage Trend Chart -->
                 <section class="drawer-section glass-panel" style="padding: 1.5rem; margin-bottom: 1.5rem;">
-                    <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-chart-line"></i> 7-Day Outage Trend (Hours)</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                        <h3 id="chartTitle" style="margin-bottom: 0;"><i class="fa-solid fa-chart-line"></i> 7-Day Outage Trend (Hours)</h3>
+                        <div class="filter-group" id="chartFilterGroup">
+                            <button class="filter-btn active" data-range="7">7 Days</button>
+                            <button class="filter-btn" data-range="30">30 Days</button>
+                            <button class="filter-btn" data-range="lifetime">Lifetime</button>
+                        </div>
+                    </div>
                     <div class="chart-container" style="position: relative; height: 220px; width: 100%; background: rgba(0,0,0,0.15); margin-top:0; border: none; padding: 0.25rem;">
                         <canvas id="outageChart"></canvas>
                     </div>

@@ -19,6 +19,8 @@ const database = getDatabase(app);
 
 // State & Constants
 let chartInstance = null;
+let selectedRange = '7'; // '7', '30', or 'lifetime'
+let deviceDataCache = null;
 const HEARTBEAT_THRESHOLD_MS = 2.5 * 60 * 1000;
 
 // URL Parameters
@@ -33,9 +35,11 @@ if (!deviceId) {
 }
 
 function initDeviceDetails() {
+    setupChartFilters();
     const deviceRef = ref(database, 'devices/' + deviceId);
     onValue(deviceRef, (snapshot) => {
         const device = snapshot.val();
+        deviceDataCache = device;
         
         if (!device) {
             document.getElementById('loadingState').innerHTML = `
@@ -194,117 +198,9 @@ function initDeviceDetails() {
         }
 
         // ──────────────────────────────────────────────
-        // ২. ৭ দিনের ট্রেন্ড চার্ট (Chart.js)
+        // ২. ট্রেন্ড চার্ট (Chart.js)
         // ──────────────────────────────────────────────
-        const chartLabels = [];
-        const chartData = [];
-        const dayMs = 24 * 60 * 60 * 1000;
-        
-        for (let i = 6; i >= 0; i--) {
-            const d = new Date(now - i * dayMs);
-            const label = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-            chartLabels.push(label);
-            
-            const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-            const endOfDay = startOfDay + dayMs;
-            let dayOfflineMins = 0;
-            
-            rawOutages.forEach(outage => {
-                const cut = outage.cutTime;
-                const restored = outage.restoredTime || now;
-                
-                const overlapStart = Math.max(cut, startOfDay);
-                const overlapEnd = Math.min(restored, endOfDay);
-                
-                if (overlapStart < overlapEnd) {
-                    dayOfflineMins += (overlapEnd - overlapStart) / 60000;
-                }
-            });
-            
-            if (!isOnline && lastHB > 0) {
-                const cut = lastHB;
-                const restored = now;
-                
-                const overlapStart = Math.max(cut, startOfDay);
-                const overlapEnd = Math.min(restored, endOfDay);
-                
-                if (overlapStart < overlapEnd) {
-                    dayOfflineMins += (overlapEnd - overlapStart) / 60000;
-                }
-            }
-            
-            const hours = (dayOfflineMins / 60).toFixed(1);
-            chartData.push(parseFloat(hours));
-        }
-
-        if (chartInstance) {
-            chartInstance.destroy();
-            chartInstance = null;
-        }
-        
-        const chartCanvas = document.getElementById('outageChart');
-        if (chartCanvas) {
-            const ctx = chartCanvas.getContext('2d');
-            const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-            gradient.addColorStop(0, 'rgba(239, 68, 68, 0.85)');
-            gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
-            
-            chartInstance = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: chartLabels,
-                    datasets: [{
-                        label: 'Outage Hours',
-                        data: chartData,
-                        backgroundColor: gradient,
-                        borderColor: '#ef4444',
-                        borderWidth: 1.5,
-                        borderRadius: 8,
-                        barPercentage: 0.55
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return ` Outage: ${context.raw}h`;
-                                }
-                            },
-                            backgroundColor: 'rgba(15, 18, 30, 0.95)',
-                            titleColor: '#fff',
-                            bodyColor: '#cbd5e1',
-                            borderColor: 'rgba(255, 255, 255, 0.08)',
-                            borderWidth: 1,
-                            titleFont: { family: "'Outfit', sans-serif" },
-                            bodyFont: { family: "'Outfit', sans-serif" }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: {
-                                color: '#94a3b8',
-                                font: { family: "'Outfit', sans-serif", size: 11 }
-                            }
-                        },
-                        y: {
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: {
-                                color: '#94a3b8',
-                                font: { family: "'Outfit', sans-serif", size: 11 },
-                                stepSize: 1,
-                                callback: function(value) { return value + 'h'; }
-                            },
-                            min: 0
-                        }
-                    }
-                }
-            });
-        }
+        renderOutageChart();
 
         // ──────────────────────────────────────────────
         // ৩. হিস্ট্রি টাইমলাইন রেন্ডার করো
@@ -365,4 +261,178 @@ function formatDateTime(timestamp) {
     const dateOpts = { month: 'short', day: 'numeric' };
     const timeOpts = { hour: 'numeric', minute: '2-digit', hour12: true };
     return `${d.toLocaleDateString(undefined, dateOpts)} at ${d.toLocaleTimeString(undefined, timeOpts)}`;
+}
+
+// ──────────────────────────────────────────────
+// ৪. চার্ট রেন্ডারিং এবং ফিল্টার ফাংশনসমূহ
+// ──────────────────────────────────────────────
+function renderOutageChart() {
+    if (!deviceDataCache) return;
+    
+    const device = deviceDataCache;
+    const lastHB = device.lastHeartbeat || 0;
+    const now = new Date().getTime();
+    
+    // Status
+    const status = device.status;
+    const isOnline = status ? (status === 'online') : (lastHB !== 0 && (now - lastHB) <= HEARTBEAT_THRESHOLD_MS);
+
+    // Extract rawOutages
+    let rawOutages = [];
+    if (device.history) {
+        rawOutages = Object.values(device.history).filter(entry => entry !== null && typeof entry === 'object');
+    }
+
+    let days = 7;
+    let titlePrefix = "7-Day";
+    if (selectedRange === '30') {
+        days = 30;
+        titlePrefix = "30-Day";
+    } else if (selectedRange === 'lifetime') {
+        if (rawOutages.length > 0) {
+            const earliestTime = Math.min(...rawOutages.map(o => o.cutTime || now));
+            const diffMs = now - earliestTime;
+            days = Math.max(7, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+        } else {
+            days = 7;
+        }
+        titlePrefix = "Lifetime";
+    }
+
+    const titleEl = document.getElementById('chartTitle');
+    if (titleEl) {
+        titleEl.innerHTML = `<i class="fa-solid fa-chart-line"></i> ${titlePrefix} Outage Trend (Hours)`;
+    }
+
+    const chartLabels = [];
+    const chartData = [];
+    const dayMs = 24 * 60 * 60 * 1000;
+    
+    for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(now - i * dayMs);
+        const label = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        chartLabels.push(label);
+        
+        const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        const endOfDay = startOfDay + dayMs;
+        let dayOfflineMins = 0;
+        
+        rawOutages.forEach(outage => {
+            const cut = outage.cutTime;
+            const restored = outage.restoredTime || now;
+            
+            const overlapStart = Math.max(cut, startOfDay);
+            const overlapEnd = Math.min(restored, endOfDay);
+            
+            if (overlapStart < overlapEnd) {
+                dayOfflineMins += (overlapEnd - overlapStart) / 60000;
+            }
+        });
+        
+        if (!isOnline && lastHB > 0) {
+            const cut = lastHB;
+            const restored = now;
+            
+            const overlapStart = Math.max(cut, startOfDay);
+            const overlapEnd = Math.min(restored, endOfDay);
+            
+            if (overlapStart < overlapEnd) {
+                dayOfflineMins += (overlapEnd - overlapStart) / 60000;
+            }
+        }
+        
+        const hours = (dayOfflineMins / 60).toFixed(1);
+        chartData.push(parseFloat(hours));
+    }
+
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+    
+    const chartCanvas = document.getElementById('outageChart');
+    if (chartCanvas) {
+        const ctx = chartCanvas.getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 220);
+        gradient.addColorStop(0, 'rgba(239, 68, 68, 0.85)');
+        gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
+        
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Outage Hours',
+                    data: chartData,
+                    backgroundColor: gradient,
+                    borderColor: '#ef4444',
+                    borderWidth: 1.5,
+                    borderRadius: days > 15 ? 4 : 8,
+                    barPercentage: days > 15 ? 0.75 : 0.55
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` Outage: ${context.raw}h`;
+                            }
+                        },
+                        backgroundColor: 'rgba(15, 18, 30, 0.95)',
+                        titleColor: '#fff',
+                        bodyColor: '#cbd5e1',
+                        borderColor: 'rgba(255, 255, 255, 0.08)',
+                        borderWidth: 1,
+                        titleFont: { family: "'Outfit', sans-serif" },
+                        bodyFont: { family: "'Outfit', sans-serif" }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { family: "'Outfit', sans-serif", size: days > 15 ? 9 : 11 },
+                            maxRotation: 45,
+                            minRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: days > 15 ? 10 : 7
+                        }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { family: "'Outfit', sans-serif", size: 11 },
+                            stepSize: 1,
+                            callback: function(value) { return value + 'h'; }
+                        },
+                        min: 0
+                    }
+                }
+            }
+        });
+    }
+}
+
+function setupChartFilters() {
+    const filterGroup = document.getElementById('chartFilterGroup');
+    if (filterGroup) {
+        filterGroup.addEventListener('click', (e) => {
+            const btn = e.target.closest('.filter-btn');
+            if (!btn) return;
+            
+            // Active class toggle
+            filterGroup.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Set state and redraw chart
+            selectedRange = btn.dataset.range;
+            renderOutageChart();
+        });
+    }
 }
