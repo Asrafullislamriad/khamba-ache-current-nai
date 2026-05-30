@@ -62,11 +62,15 @@ function fetchRealtimeData() {
                 const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
                 
                 if (device.history) {
-                    // Firebase-এর history নোড থেকে সব entry পড়ো
-                    const entries = Object.values(device.history);
+                    // Firebase-এর history নোড থেকে সব entry পড়ো এবং null/invalid entries ফিল্টার করো
+                    const entries = Object.values(device.history).filter(entry => entry !== null && typeof entry === 'object');
                     
                     // নতুন থেকে পুরনো অনুযায়ী সাজাও
-                    entries.sort((a, b) => (b.restoredTime || b.cutTime || 0) - (a.restoredTime || a.cutTime || 0));
+                    entries.sort((a, b) => {
+                        const timeA = b.restoredTime || b.cutTime || 0;
+                        const timeB = a.restoredTime || a.cutTime || 0;
+                        return timeA - timeB;
+                    });
                     
                     entries.forEach(entry => {
                         if (entry.type === 'outage') {
@@ -106,7 +110,7 @@ function fetchRealtimeData() {
 
                 let rawOutages = [];
                 if (device.history) {
-                    rawOutages = Object.values(device.history);
+                    rawOutages = Object.values(device.history).filter(entry => entry !== null && typeof entry === 'object');
                 }
 
                 monitors.push({

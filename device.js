@@ -98,9 +98,13 @@ function initDeviceDetails() {
         let rawOutages = [];
 
         if (device.history) {
-            rawOutages = Object.values(device.history);
+            rawOutages = Object.values(device.history).filter(entry => entry !== null && typeof entry === 'object');
             // Sort raw outages by cutTime descending (newest first)
-            rawOutages.sort((a, b) => (b.restoredTime || b.cutTime || 0) - (a.restoredTime || a.cutTime || 0));
+            rawOutages.sort((a, b) => {
+                const timeA = b.restoredTime || b.cutTime || 0;
+                const timeB = a.restoredTime || a.cutTime || 0;
+                return timeA - timeB;
+            });
 
             rawOutages.forEach(entry => {
                 if (entry.type === 'outage') {
