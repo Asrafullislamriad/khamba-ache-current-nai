@@ -19,7 +19,6 @@ const database = getDatabase(app);
 
 // State variables
 let monitors = [];
-let chartInstance = null; // Holds the Chart.js instance for the drawer
 const HEARTBEAT_THRESHOLD_MS = 2.5 * 60 * 1000; // 2.5 minutes (ESP sends every 1 min, so ±1 min accuracy)
 
 // DOM Elements
@@ -33,16 +32,6 @@ const modal = document.getElementById('addDeviceModal');
 const addDeviceBtn = document.getElementById('addDeviceBtn');
 const closeBtn = document.querySelector('.close-btn');
 const addDeviceForm = document.getElementById('addDeviceForm');
-
-// Drawer Elements
-const drawer = document.getElementById('historyDrawer');
-const closeDrawerBtn = document.getElementById('closeDrawerBtn');
-const drawerOverlay = document.querySelector('.drawer-overlay');
-const dAreaName = document.getElementById('drawerAreaName');
-const dDeviceId = document.querySelector('#drawerDeviceId span');
-const dTotalOutage = document.getElementById('drawerTotalOutage');
-const dStatus = document.getElementById('drawerStatus');
-const dTimeline = document.getElementById('historyTimeline');
 
 // Initialization
 function initDashboard() {
@@ -247,240 +236,11 @@ function renderMonitors(filter) {
             </div>
         `;
         
-        card.addEventListener('click', () => openHistoryDrawer(monitor));
+        card.addEventListener('click', () => {
+            window.location.href = `device.html?id=${monitor.id}`;
+        });
         grid.appendChild(card);
     });
-}
-
-// Drawer functionality
-function openHistoryDrawer(monitor) {
-    dAreaName.textContent = monitor.name;
-    dDeviceId.textContent = monitor.id;
-    dTotalOutage.textContent = formatDuration(monitor.totalLoadShedding24h);
-    
-    if (monitor.isOnline) {
-        dStatus.textContent = "Power ON";
-        dStatus.className = "status-badge status-online";
-        dStatus.style.background = "rgba(16, 185, 129, 0.15)";
-        dStatus.style.color = "var(--success)";
-        dStatus.style.border = "1px solid rgba(16, 185, 129, 0.3)";
-    } else {
-        dStatus.textContent = "Load Shedding";
-        dStatus.className = "status-badge status-offline";
-        dStatus.style.background = "rgba(239, 68, 68, 0.15)";
-        dStatus.style.color = "var(--danger)";
-        dStatus.style.border = "1px solid rgba(239, 68, 68, 0.3)";
-    }
-
-    // IP Address দেখাও (ভেরিফিকেশনের জন্য)
-    const ipEl = document.getElementById('drawerDeviceIP');
-    if (ipEl) ipEl.textContent = monitor.deviceIP;
-
-    const now = new Date().getTime();
-
-    // ──────────────────────────────────────────────
-    // ১. ২৪ ঘণ্টার পাওয়ার বার (Availability Strip) রেন্ডার করো
-    // ──────────────────────────────────────────────
-    const availabilityBar = document.getElementById('availabilityBar');
-    if (availabilityBar) {
-        availabilityBar.innerHTML = '';
-        const oneHour = 60 * 60 * 1000;
-        
-        // ২৪টি ব্লক জেনারেট করো (২৩ ঘণ্টা আগে থেকে বর্তমান ঘণ্টা পর্যন্ত)
-        for (let i = 23; i >= 0; i--) {
-            const slotStart = now - (i + 1) * oneHour;
-            const slotEnd = now - i * oneHour;
-            let offlineMins = 0;
-            
-            // আউটেজ চেক
-            if (monitor.rawOutages) {
-                monitor.rawOutages.forEach(outage => {
-                    const cut = outage.cutTime;
-                    const restored = outage.restoredTime || now;
-                    
-                    const overlapStart = Math.max(cut, slotStart);
-                    const overlapEnd = Math.min(restored, slotEnd);
-                    
-                    if (overlapStart < overlapEnd) {
-                        offlineMins += (overlapEnd - overlapStart) / 60000;
-                    }
-                });
-            }
-            
-            // রানিং অফলাইন ইভেন্ট
-            if (monitor.status !== 'online' && monitor.lastHeartbeat > 0) {
-                const cut = monitor.lastHeartbeat;
-                const restored = now;
-                
-                const overlapStart = Math.max(cut, slotStart);
-                const overlapEnd = Math.min(restored, slotEnd);
-                
-                if (overlapStart < overlapEnd) {
-                    offlineMins += (overlapEnd - overlapStart) / 60000;
-                }
-            }
-            
-            const dateObj = new Date(slotStart);
-            const timeLabel = dateObj.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            const block = document.createElement('div');
-            block.className = 'availability-block';
-            
-            if (offlineMins > 2) {
-                block.classList.add('offline');
-                block.setAttribute('data-tooltip', `${timeLabel}: Load Shedding (${Math.round(offlineMins)}m)`);
-            } else {
-                block.classList.add('online');
-                block.setAttribute('data-tooltip', `${timeLabel}: Power Available`);
-            }
-            availabilityBar.appendChild(block);
-        }
-    }
-
-    // ──────────────────────────────────────────────
-    // ২. ৭ দিনের ট্রেন্ড চার্ট (Chart.js) রেন্ডার করো
-    // ──────────────────────────────────────────────
-    const chartLabels = [];
-    const chartData = [];
-    const dayMs = 24 * 60 * 60 * 1000;
-    
-    for (let i = 6; i >= 0; i--) {
-        const d = new Date(now - i * dayMs);
-        const label = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        chartLabels.push(label);
-        
-        const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-        const endOfDay = startOfDay + dayMs;
-        let dayOfflineMins = 0;
-        
-        if (monitor.rawOutages) {
-            monitor.rawOutages.forEach(outage => {
-                const cut = outage.cutTime;
-                const restored = outage.restoredTime || now;
-                
-                const overlapStart = Math.max(cut, startOfDay);
-                const overlapEnd = Math.min(restored, endOfDay);
-                
-                if (overlapStart < overlapEnd) {
-                    dayOfflineMins += (overlapEnd - overlapStart) / 60000;
-                }
-            });
-        }
-        
-        if (monitor.status !== 'online' && monitor.lastHeartbeat > 0) {
-            const cut = monitor.lastHeartbeat;
-            const restored = now;
-            
-            const overlapStart = Math.max(cut, startOfDay);
-            const overlapEnd = Math.min(restored, endOfDay);
-            
-            if (overlapStart < overlapEnd) {
-                dayOfflineMins += (overlapEnd - overlapStart) / 60000;
-            }
-        }
-        
-        const hours = (dayOfflineMins / 60).toFixed(1);
-        chartData.push(parseFloat(hours));
-    }
-    
-    // চার্ট রিস্টার্ট
-    if (chartInstance) {
-        chartInstance.destroy();
-        chartInstance = null;
-    }
-    
-    const chartCanvas = document.getElementById('outageChart');
-    if (chartCanvas) {
-        const ctx = chartCanvas.getContext('2d');
-        const gradient = ctx.createLinearGradient(0, 0, 0, 150);
-        gradient.addColorStop(0, 'rgba(239, 68, 68, 0.8)');   // Red glow top
-        gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');  // Fade bottom
-        
-        chartInstance = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: chartLabels,
-                datasets: [{
-                    label: 'Outage Hours',
-                    data: chartData,
-                    backgroundColor: gradient,
-                    borderColor: '#ef4444',
-                    borderWidth: 1.5,
-                    borderRadius: 6,
-                    barPercentage: 0.6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return ` Outage: ${context.raw}h`;
-                            }
-                        },
-                        backgroundColor: 'rgba(15, 18, 30, 0.95)',
-                        titleColor: '#fff',
-                        bodyColor: '#cbd5e1',
-                        borderColor: 'rgba(255, 255, 255, 0.08)',
-                        borderWidth: 1,
-                        titleFont: { family: "'Outfit', sans-serif" },
-                        bodyFont: { family: "'Outfit', sans-serif" }
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: { display: false },
-                        ticks: {
-                            color: '#94a3b8',
-                            font: { family: "'Outfit', sans-serif", size: 10 }
-                        }
-                    },
-                    y: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: {
-                            color: '#94a3b8',
-                            font: { family: "'Outfit', sans-serif", size: 10 },
-                            stepSize: 1,
-                            callback: function(value) { return value + 'h'; }
-                        },
-                        min: 0
-                    }
-                }
-            }
-        });
-    }
-
-    // ──────────────────────────────────────────────
-    // ৩. হিস্ট্রি টাইমলাইন রেন্ডার করো
-    // ──────────────────────────────────────────────
-    dTimeline.innerHTML = '';
-    
-    if (!monitor.history || monitor.history.length === 0) {
-        dTimeline.innerHTML = `<div style="color: var(--text-secondary);">No outage history available yet.</div>`;
-    } else {
-        monitor.history.forEach(evt => {
-            const isCut = evt.type === 'power-cut';
-            const html = `
-                <div class="timeline-item ${evt.type}">
-                    <div class="timeline-dot"></div>
-                    <div class="timeline-content">
-                        <div class="timeline-header">
-                            <span class="timeline-title">
-                                ${isCut ? '<i class="fa-solid fa-bolt-slash"></i> Power Outage' : '<i class="fa-solid fa-bolt"></i> Power Restored'}
-                            </span>
-                            <span class="timeline-date">${formatDateTime(evt.time)}</span>
-                        </div>
-                        ${evt.duration ? `<div class="timeline-duration"><i class="fa-regular fa-clock"></i> Duration: ${evt.duration}</div>` : ''}
-                    </div>
-                </div>
-            `;
-            dTimeline.innerHTML += html;
-        });
-    }
-
-    drawer.classList.add('active');
 }
 
 // Bind Events
@@ -501,13 +261,6 @@ function setupEventListeners() {
     });
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.classList.remove('active');
-    });
-
-    closeDrawerBtn.addEventListener('click', () => {
-        drawer.classList.remove('active');
-    });
-    drawerOverlay.addEventListener('click', () => {
-        drawer.classList.remove('active');
     });
 
     // Form: Create a new device inside Firebase

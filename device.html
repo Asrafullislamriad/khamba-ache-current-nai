@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PowerPulse | Device Details</title>
+    <meta name="description" content="Real-time device status and history for PowerPulse Load Shedding Monitor.">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-effect"></div>
+    
+    <div class="container" style="max-width: 1200px;">
+        <header style="margin-bottom: 2rem;">
+            <div class="logo">
+                <i class="fa-solid fa-bolt-lightning pulse-icon"></i>
+                <h1>PowerPulse</h1>
+            </div>
+            <p class="subtitle" style="margin-left: 1.5rem; flex-grow: 1;">Device Status Dashboard</p>
+            <a href="index.html" class="back-btn-details">
+                <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </header>
+
+        <!-- Loading State -->
+        <div id="loadingState" style="text-align: center; padding: 4rem 0; color: var(--text-secondary);">
+            <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2rem; margin-bottom: 1rem; color: var(--accent);"></i>
+            <p>Loading device information from Firebase...</p>
+        </div>
+
+        <!-- Details Container (Hidden while loading) -->
+        <div class="details-grid" id="detailsGrid" style="display: none;">
+            <!-- Left Side: Status and Stats -->
+            <aside class="details-sidebar">
+                <div class="device-title-area glass-panel" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+                    <h2 id="areaName" style="font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem;">Area Name</h2>
+                    <span id="deviceId" class="device-id" style="font-size: 0.9rem;"><i class="fa-solid fa-microchip"></i> Device ID</span>
+                </div>
+
+                <!-- Status Card -->
+                <div class="status-card-large glass-panel" id="statusCard" style="padding: 1.5rem; margin-bottom: 1.5rem; text-align: center; position: relative; overflow: hidden;">
+                    <div style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.75rem; letter-spacing: 1px;">Current Power Status</div>
+                    <div class="status-badge-large" id="statusBadge" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem; padding: 0.5rem 1.5rem; border-radius: 50px; font-weight: 700; font-size: 1.25rem;">
+                        <span class="status-indicator" style="width: 12px; height: 12px; border-radius: 50%;"></span>
+                        <span id="statusText">Checking...</span>
+                    </div>
+                </div>
+
+                <!-- Stats card -->
+                <div class="stats-card-details glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
+                    <div class="d-stat-details">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);" id="statusDurationLabel">Uptime Duration</span>
+                        <strong id="statusDuration" style="font-size: 1.15rem; display: block; margin-top: 0.25rem;">N/A</strong>
+                    </div>
+                    <div class="d-stat-details" style="border-top: 1px solid var(--panel-border); padding-top: 1rem;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);">Total Outage Duration (Last 24h)</span>
+                        <strong id="totalOutage24h" style="font-size: 1.15rem; display: block; margin-top: 0.25rem; color: #fca5a5;">0h 0m</strong>
+                    </div>
+                    <div class="d-stat-details" style="border-top: 1px solid var(--panel-border); padding-top: 1rem;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);">Public IP (ISP Network)</span>
+                        <strong id="publicIP" style="font-family: monospace; font-size: 1rem; display: block; margin-top: 0.25rem;">N/A</strong>
+                    </div>
+                    <div class="d-stat-details" style="border-top: 1px solid var(--panel-border); padding-top: 1rem;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);">Local IP (LAN Address)</span>
+                        <strong id="localIP" style="font-family: monospace; font-size: 1rem; display: block; margin-top: 0.25rem;">N/A</strong>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right Side: Charts and Timeline -->
+            <main class="details-main">
+                <!-- 24h Availability -->
+                <section class="drawer-section glass-panel" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+                    <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-chart-simple"></i> 24-Hour Availability Strip</h3>
+                    <div class="availability-container" style="background: rgba(0,0,0,0.15); margin-top:0;">
+                        <div class="availability-bar" id="availabilityBar">
+                            <!-- 24 blocks injected by JS -->
+                        </div>
+                        <div class="availability-labels">
+                            <span>24h ago</span>
+                            <span>Now</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 7-Day Trend Chart -->
+                <section class="drawer-section glass-panel" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+                    <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-chart-line"></i> 7-Day Outage Trend (Hours)</h3>
+                    <div class="chart-container" style="position: relative; height: 220px; width: 100%; background: rgba(0,0,0,0.15); margin-top:0; border: none; padding: 0.25rem;">
+                        <canvas id="outageChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Detailed Outage History -->
+                <section class="drawer-section glass-panel" style="padding: 1.5rem;">
+                    <h3 style="margin-bottom: 1.5rem;"><i class="fa-solid fa-clock-rotate-left"></i> Detailed Outage History</h3>
+                    <div class="history-timeline" id="historyTimeline" style="padding-left: 20px;">
+                        <!-- Timeline items injected here -->
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Firebase and Chart.js CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" src="device.js"></script>
+</body>
+</html>
