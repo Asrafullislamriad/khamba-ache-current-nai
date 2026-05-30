@@ -91,10 +91,6 @@ function initDeviceDetails() {
             durationVal.innerHTML = `<i class="fa-solid fa-plug-circle-xmark" style="margin-right: 0.4rem; color: var(--danger);"></i> ${timeAgo(lastHB)}`;
         }
 
-        // Render IP details
-        document.getElementById('publicIP').textContent = device.publicIP || "N/A";
-        document.getElementById('localIP').textContent = device.localIP || device.deviceIP || "N/A";
-
         // Parse Outages & History
         let deviceHistory = [];
         let totalOutageMins24h = 0;
